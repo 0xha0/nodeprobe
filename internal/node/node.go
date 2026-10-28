@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/metacubex/mihomo/adapter"
 	C "github.com/metacubex/mihomo/constant"
@@ -70,6 +71,7 @@ type Built struct {
 func Build(p *config.Provider, groups []config.Group, proxies []map[string]any) *Built {
 	b := &Built{}
 	seen := map[string]bool{}
+	var bases, suffixes []string // each node's name in the list and its " #2" (labels are made from the first)
 	for i, m := range proxies {
 		raw, _ := m["name"].(string)
 		name := clean(raw)
@@ -79,6 +81,9 @@ func Build(p *config.Provider, groups []config.Group, proxies []map[string]any) 
 		}
 		if rest, ok := strings.CutPrefix(name, "🇨🇳"); ok && taiwan.MatchString(rest) {
 			name = "🇹🇼" + rest
+		}
+		if rest, ok := strings.CutPrefix(name, "🇺🇲"); ok { // the US's outlying islands: lists mean the US
+			name = "🇺🇸" + rest
 		}
 		if (p.Include.Regexp != nil && !p.Include.MatchString(name)) ||
 			(p.Exclude.Regexp != nil && p.Exclude.MatchString(name)) {
@@ -90,12 +95,11 @@ func Build(p *config.Provider, groups []config.Group, proxies []map[string]any) 
 			b.Invalid = append(b.Invalid, fmt.Errorf("%q: no real server (an info entry)", name))
 			continue
 		}
-		short, suffix := label(p, name), ""
+		base, suffix := name, ""
 		if seen[name] {
 			// a provider's list can name two nodes alike: both are tested, the later one numbered
-			// (its short name too: the default pattern would take the number for the node's own)
+			// (its short name too, from the list's name: a label would take "#2" for the node's number)
 			b.Duplicates++
-			base := name
 			for k := 2; seen[name]; k++ {
 				suffix = " #" + strconv.Itoa(k)
 				name = base + suffix
@@ -124,13 +128,25 @@ func Build(p *config.Provider, groups []config.Group, proxies []map[string]any) 
 		b.Nodes = append(b.Nodes, &Node{
 			Provider: p.Name,
 			Name:     name,
-			Label:    short + suffix,
 			Group:    group(groups, name),
 			Server:   clean(server),
 			Port:     port(m["port"]),
 			TCP:      tcpProtocols[typ] && !hopping && !mieruUDP,
 			Proxy:    proxy,
 		})
+		bases, suffixes = append(bases, base), append(suffixes, suffix)
+	}
+	switch p.NodeName.Mode {
+	case config.NodeFull:
+		for _, n := range b.Nodes {
+			n.Label = n.Name
+		}
+	case config.NodePattern:
+		for i, n := range b.Nodes {
+			n.Label = label(p, bases[i]) + suffixes[i]
+		}
+	default:
+		countryLabels(b.Nodes, bases, suffixes)
 	}
 	uniqueLabels(b.Nodes)
 	return b
@@ -139,6 +155,92 @@ func Build(p *config.Provider, groups []config.Group, proxies []map[string]any) 
 // clean makes s valid UTF-8 (share links' names come %-unescaped and can hold any byte; Prometheus
 // refuses a label value that isn't UTF-8, and one such value fails a whole scrape).
 func clean(s string) string { return strings.ToValidUTF8(strings.TrimSpace(s), "�") }
+
+// countryLabels names each node by its flag's country code and its number in the list's name
+// ("🇭🇰 高级 专线 香港 01" → "HK 01"; no number: "HK"). Where a country's labels would collide
+// (a list naming nodes by city, or numbering each city from 01), that country's nodes are numbered
+// in list order instead. A name without a flag keeps itself.
+func countryLabels(nodes []*Node, bases, suffixes []string) {
+	byCode := map[string][]int{}
+	var codes []string
+	for i, n := range nodes {
+		code := flagCode(bases[i])
+		if code == "" {
+			n.Label = n.Name
+			continue
+		}
+		if byCode[code] == nil {
+			codes = append(codes, code)
+		}
+		byCode[code] = append(byCode[code], i)
+	}
+	for _, code := range codes {
+		idx := byCode[code]
+		own, seen, clash := make([]string, len(idx)), map[string]bool{}, false
+		for j, i := range idx {
+			own[j] = code
+			if num := nodeNumber(bases[i]); num != "" {
+				own[j] += " " + num
+			}
+			own[j] += suffixes[i]
+			clash = clash || seen[own[j]]
+			seen[own[j]] = true
+		}
+		width := max(2, len(strconv.Itoa(len(idx))))
+		for j, i := range idx {
+			if clash {
+				nodes[i].Label = fmt.Sprintf("%s %0*d", code, width, j+1)
+			} else {
+				nodes[i].Label = own[j]
+			}
+		}
+	}
+}
+
+// flagCode is the country code of the first flag in name (two regional indicators: 🇭🇰 → "HK").
+func flagCode(name string) string {
+	var prev rune
+	for _, r := range name {
+		if r >= 0x1F1E6 && r <= 0x1F1FF {
+			if prev != 0 {
+				return string([]rune{prev - 0x1F1E6 + 'A', r - 0x1F1E6 + 'A'})
+			}
+			prev = r
+			continue
+		}
+		prev = 0
+	}
+	return ""
+}
+
+// nodeNumber is the last number in name that stands on its own, two digits at least ("01"; "7" →
+// "07"): one touching a letter or a dot is something else ("1x" a rate, "V1" a version, "0.2" a
+// rate, "5G"); "" when there is none.
+func nodeNumber(name string) string {
+	rs := []rune(name)
+	glued := func(i int) bool {
+		return i >= 0 && i < len(rs) && (rs[i] == '.' || (rs[i] < 0x80 && unicode.IsLetter(rs[i])))
+	}
+	last := ""
+	for i := 0; i < len(rs); {
+		if !unicode.IsDigit(rs[i]) || rs[i] >= 0x80 {
+			i++
+			continue
+		}
+		j := i
+		for j < len(rs) && rs[j] < 0x80 && unicode.IsDigit(rs[j]) {
+			j++
+		}
+		if !glued(i-1) && !glued(j) {
+			last = string(rs[i:j])
+		}
+		i = j
+	}
+	if len(last) == 1 {
+		last = "0" + last
+	}
+	return last
+}
 
 // label is node_name's template applied to the name's match, or the full name.
 func label(p *config.Provider, name string) string {

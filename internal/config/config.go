@@ -48,10 +48,48 @@ type Provider struct {
 	Groups    []Group  `yaml:"groups"` // this provider's own groups instead of the global ones
 }
 
-// NodeName turns a node's full name into the short `node` label.
+// NodeName turns a node's full name into the short `node` label: "country" (the default: the
+// country code of the name's flag and the node's number, e.g. "HK 01"), "full" (the name as it is),
+// or a mapping {pattern, template} (regexp.Expand of the pattern's match).
 type NodeName struct {
-	Pattern  Regexp `yaml:"pattern"`
-	Template string `yaml:"template"` // regexp.Expand template, e.g. "$1 $2"
+	Mode     string // NodeCountry, NodeFull or NodePattern
+	Pattern  Regexp
+	Template string // regexp.Expand template, e.g. "$1 $2"
+}
+
+// The node_name modes.
+const (
+	NodeCountry = "country"
+	NodeFull    = "full"
+	NodePattern = "pattern"
+)
+
+// UnmarshalYAML reads "country", "full" or {pattern, template}.
+func (n *NodeName) UnmarshalYAML(v *yaml.Node) error {
+	if v.Kind == yaml.ScalarNode {
+		if v.Value != NodeCountry && v.Value != NodeFull {
+			return fmt.Errorf("line %d: node_name: country, full or {pattern, template}, not %q", v.Line, short(v.Value))
+		}
+		n.Mode = v.Value
+		return nil
+	}
+	if v.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: node_name: country, full or {pattern, template}", v.Line)
+	}
+	for i := 0; i < len(v.Content); i += 2 {
+		if k := v.Content[i].Value; k != "pattern" && k != "template" {
+			return fmt.Errorf("line %d: node_name: unknown key %q", v.Content[i].Line, short(k))
+		}
+	}
+	var m struct {
+		Pattern  Regexp `yaml:"pattern"`
+		Template string `yaml:"template"`
+	}
+	if err := v.Decode(&m); err != nil {
+		return err
+	}
+	n.Mode, n.Pattern, n.Template = NodePattern, m.Pattern, m.Template
+	return nil
 }
 
 // Group is a classification rule: the first group whose regexp matches a node's name holds it.
@@ -130,11 +168,8 @@ func (c *Config) defaults() {
 		if p.UserAgent == "" {
 			p.UserAgent = "clash.meta" // what providers look for to answer with a Clash YAML
 		}
-		if p.NodeName.Pattern.Regexp == nil {
-			p.NodeName.Pattern = MustRegexp(`\b([A-Z]{2})\s*\|.*?(\d+)\s*$`)
-			if p.NodeName.Template == "" {
-				p.NodeName.Template = "$1 $2"
-			}
+		if p.NodeName.Mode == "" {
+			p.NodeName.Mode = NodeCountry
 		}
 	}
 }
@@ -183,8 +218,8 @@ func (c *Config) validate() error {
 		if p.Refresh.Duration < time.Minute {
 			bad("%s: refresh below 1m", where)
 		}
-		if p.NodeName.Template == "" {
-			bad("%s: node_name.template is empty", where)
+		if p.NodeName.Mode == NodePattern && (p.NodeName.Pattern.Regexp == nil || p.NodeName.Template == "") {
+			bad("%s: node_name needs both a pattern and a template", where)
 		}
 		for _, err := range checkGroups(p.Groups) {
 			bad("%s: %v", where, err)

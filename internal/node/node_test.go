@@ -1,6 +1,7 @@
 package node
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -16,7 +17,7 @@ func TestBuild(t *testing.T) {
 	p := &config.Provider{
 		Name:     "main",
 		Exclude:  config.MustRegexp("到期"),
-		NodeName: config.NodeName{Pattern: config.MustRegexp(`\b([A-Z]{2})\s*\|.*?(\d+)\s*$`), Template: "$1 $2"},
+		NodeName: config.NodeName{Mode: config.NodePattern, Pattern: config.MustRegexp(`\b([A-Z]{2})\s*\|.*?(\d+)\s*$`), Template: "$1 $2"},
 	}
 	groups := []config.Group{{Name: "HK", Match: config.MustRegexp("🇭🇰")}, {Name: "EU", Match: config.MustRegexp("🇩🇪|🇬🇧")}}
 	b := Build(p, groups, []map[string]any{
@@ -44,7 +45,7 @@ func TestBuild(t *testing.T) {
 }
 
 func TestLabelCollision(t *testing.T) {
-	p := &config.Provider{Name: "x", NodeName: config.NodeName{Pattern: config.MustRegexp(`([A-Z]{2})`), Template: "$1"}}
+	p := &config.Provider{Name: "x", NodeName: config.NodeName{Mode: config.NodePattern, Pattern: config.MustRegexp(`([A-Z]{2})`), Template: "$1"}}
 	b := Build(p, []config.Group{{Name: "All", Match: config.MustRegexp(".")}}, []map[string]any{
 		proxy("HK one", "a"), proxy("HK two", "b"), proxy("JP one", "c"),
 	})
@@ -55,7 +56,7 @@ func TestLabelCollision(t *testing.T) {
 }
 
 func TestInclude(t *testing.T) {
-	p := &config.Provider{Name: "x", Include: config.MustRegexp("HK"), NodeName: config.NodeName{Pattern: config.MustRegexp("^$"), Template: "$0"}}
+	p := &config.Provider{Name: "x", Include: config.MustRegexp("HK"), NodeName: config.NodeName{Mode: config.NodePattern, Pattern: config.MustRegexp("^$"), Template: "$0"}}
 	b := Build(p, []config.Group{{Name: "All", Match: config.MustRegexp(".")}}, []map[string]any{proxy("HK 1", "a"), proxy("JP 1", "b")})
 	if len(b.Nodes) != 1 || b.Excluded != 1 || b.Nodes[0].Label != "HK 1" {
 		t.Errorf("%+v", b)
@@ -63,7 +64,7 @@ func TestInclude(t *testing.T) {
 }
 
 func TestTypesAndTransport(t *testing.T) {
-	p := &config.Provider{Name: "x", NodeName: config.NodeName{Pattern: config.MustRegexp("^$"), Template: "$0"}}
+	p := &config.Provider{Name: "x", NodeName: config.NodeName{Mode: config.NodePattern, Pattern: config.MustRegexp("^$"), Template: "$0"}}
 	all := []config.Group{{Name: "All", Match: config.MustRegexp(".")}}
 	b := Build(p, all, []map[string]any{
 		{"name": "direct", "type": "direct"},
@@ -81,7 +82,7 @@ func TestTypesAndTransport(t *testing.T) {
 }
 
 func TestInvalidUTF8(t *testing.T) {
-	p := &config.Provider{Name: "x", NodeName: config.NodeName{Pattern: config.MustRegexp(`([A-Z]{2})(.*)`), Template: "$1$2"}}
+	p := &config.Provider{Name: "x", NodeName: config.NodeName{Mode: config.NodePattern, Pattern: config.MustRegexp(`([A-Z]{2})(.*)`), Template: "$1$2"}}
 	b := Build(p, []config.Group{{Name: "All", Match: config.MustRegexp(".")}}, []map[string]any{proxy("HK\xff01", "h\xfe")})
 	n := b.Nodes[0]
 	if !utf8.ValidString(n.Name) || !utf8.ValidString(n.Label) || !utf8.ValidString(n.Server) {
@@ -92,7 +93,7 @@ func TestInvalidUTF8(t *testing.T) {
 func TestLabelCollisionChain(t *testing.T) {
 	// "🇯🇵 JP 02" → "JP 02"; "JP 02" and "HK 02" → "02" collide and fall back to their full names,
 	// and "JP 02" now equals the first one's label: it must fall back too
-	p := &config.Provider{Name: "x", NodeName: config.NodeName{Pattern: config.MustRegexp(`^\S+ (.*)$`), Template: "$1"}}
+	p := &config.Provider{Name: "x", NodeName: config.NodeName{Mode: config.NodePattern, Pattern: config.MustRegexp(`^\S+ (.*)$`), Template: "$1"}}
 	b := Build(p, []config.Group{{Name: "All", Match: config.MustRegexp(".")}}, []map[string]any{
 		proxy("🇯🇵 JP 02", "a"), proxy("JP 02", "b"), proxy("HK 02", "c"),
 	})
@@ -106,7 +107,7 @@ func TestLabelCollisionChain(t *testing.T) {
 }
 
 func TestInfoEntriesAndTaiwan(t *testing.T) {
-	p := &config.Provider{Name: "x", NodeName: config.NodeName{Pattern: config.MustRegexp("^$"), Template: "$0"}}
+	p := &config.Provider{Name: "x", NodeName: config.NodeName{Mode: config.NodePattern, Pattern: config.MustRegexp("^$"), Template: "$0"}}
 	groups := []config.Group{{Name: "TW", Match: config.MustRegexp("🇹🇼")}, {Name: "CN", Match: config.MustRegexp("🇨🇳")}}
 	b := Build(p, groups, []map[string]any{
 		proxy("剩余流量：100 GB", "127.0.0.1"),
@@ -134,7 +135,7 @@ func TestInfoEntriesAndTaiwan(t *testing.T) {
 }
 
 func TestDuplicateNumbering(t *testing.T) {
-	p := &config.Provider{Name: "x", NodeName: config.NodeName{Pattern: config.MustRegexp("^$"), Template: "$0"}}
+	p := &config.Provider{Name: "x", NodeName: config.NodeName{Mode: config.NodePattern, Pattern: config.MustRegexp("^$"), Template: "$0"}}
 	b := Build(p, []config.Group{{Name: "All", Match: config.MustRegexp(".")}}, []map[string]any{
 		proxy("a", "s1"), proxy("a", "s2"), proxy("a #2", "s3"), proxy("a", "s4"),
 	})
@@ -148,5 +149,57 @@ func TestDuplicateNumbering(t *testing.T) {
 	// "a #2" was taken by the second "a" when the list's own "a #2" came: that one is numbered too
 	if b.Duplicates != 3 || strings.Join(got, ",") != "a@s1,a #2@s2,a #2 #2@s3,a #3@s4" {
 		t.Errorf("duplicates %d nodes %v", b.Duplicates, got)
+	}
+}
+
+func TestCountryLabels(t *testing.T) {
+	p := &config.Provider{Name: "x", NodeName: config.NodeName{Mode: config.NodeCountry}}
+	all := []config.Group{{Name: "All", Match: config.MustRegexp(".")}}
+	cases := []struct {
+		name, list string
+		names      []string
+		want       []string
+	}{
+		{"numbers as the list has them, none: the code alone", "bear", []string{
+			"🇭🇰 日用 专线 香港[0.2]", "🇭🇰 高级 专线 香港 01", "🇭🇰 高级 专线 香港 02", "🇦🇪 边缘 专线 迪拜", "🇩🇪 边缘 专线 德国 02",
+		}, []string{"HK", "HK 01", "HK 02", "AE", "DE 02"}},
+		{"the flag's code, not the name's (UK)", "bear-bkp", []string{
+			"🇬🇧 UK | 英国 05", "🇭🇰 HK | 香港 18", "🇯🇵 JP | 日本 7",
+		}, []string{"GB 05", "HK 18", "JP 07"}},
+		{"a version is no number; 🇺🇲 is the US", "socloud", []string{
+			"🇭🇰 香港 | V1 | 02", "🇦🇷 阿根廷 | V1 | 01", "🇺🇲 美国 | V1 | 03",
+		}, []string{"HK 02", "AR 01", "US 03"}},
+		{"rates are no numbers; a country whose labels collide is numbered in list order", "tagss", []string{
+			"🇦🇩 安道尔丨3x AD", "🇺🇸 美国-休斯顿丨1x US", "🇺🇸 美国-洛杉矶 01丨1x US", "🇺🇸 美国-纽约 01丨1x US",
+			"🇯🇵 日本 02丨1x JP", "🇸🇬 新加坡家宽 02丨10x SG", "🇯🇵 日本蜂窝5G丨10x JP",
+		}, []string{"AD", "US 01", "US 02", "US 03", "JP 02", "SG 02", "JP"}},
+		{"no flag: the full name; a Taiwan node flagged 🇨🇳 is TW", "misc", []string{
+			"plain 01", "🇨🇳 台湾 03",
+		}, []string{"plain 01", "TW 03"}},
+		{"a repeated name keeps its number and its #2", "dup", []string{
+			"🇭🇰 香港 01", "🇭🇰 香港 01",
+		}, []string{"HK 01", "HK 01 #2"}},
+	}
+	for _, c := range cases {
+		var ps []map[string]any
+		for i, n := range c.names {
+			ps = append(ps, proxy(n, fmt.Sprintf("s%d", i)))
+		}
+		b := Build(p, all, ps)
+		var got []string
+		for _, n := range b.Nodes {
+			got = append(got, n.Label)
+		}
+		if strings.Join(got, ",") != strings.Join(c.want, ",") {
+			t.Errorf("%s (%s): %v, want %v", c.name, c.list, got, c.want)
+		}
+	}
+}
+
+func TestFullLabels(t *testing.T) {
+	p := &config.Provider{Name: "x", NodeName: config.NodeName{Mode: config.NodeFull}}
+	b := Build(p, []config.Group{{Name: "All", Match: config.MustRegexp(".")}}, []map[string]any{proxy("🇭🇰 HK | 香港 01", "a")})
+	if b.Nodes[0].Label != "🇭🇰 HK | 香港 01" {
+		t.Errorf("full: %q", b.Nodes[0].Label)
 	}
 }

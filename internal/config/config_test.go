@@ -167,3 +167,31 @@ groups: [{name: Global, match: x}]
 		t.Errorf("b: %v", g)
 	}
 }
+
+func TestNodeName(t *testing.T) {
+	parse := func(nn string) (*Config, error) {
+		y := "providers:\n  - name: main\n    url: http://h/\n" + nn + "groups:\n  - {name: All, match: \".\"}\n"
+		return Parse([]byte(y), env(nil))
+	}
+	for nn, want := range map[string]string{
+		"":                         NodeCountry,
+		"    node_name: country\n": NodeCountry,
+		"    node_name: full\n":    NodeFull,
+		"    node_name: {pattern: '([A-Z]{2})', template: '$1'}\n": NodePattern,
+	} {
+		c, err := parse(nn)
+		if err != nil || c.Providers[0].NodeName.Mode != want {
+			t.Errorf("%q: %v %+v", nn, err, c)
+		}
+	}
+	for _, nn := range []string{
+		"    node_name: short\n",
+		"    node_name: {pattern: 'x'}\n",
+		"    node_name: {pattern: 'x', template: 'y', mode: z}\n",
+		"    node_name: [x]\n",
+	} {
+		if _, err := parse(nn); err == nil {
+			t.Errorf("%q was accepted", nn)
+		}
+	}
+}

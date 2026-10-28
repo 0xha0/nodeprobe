@@ -14,9 +14,8 @@ providers:
   #   file: /etc/nodeprobe/backup.yaml # a local list instead of a URL
   #   include: "HK|JP"                 # only these
   #   keep_local: true                 # nodes on 127.0.0.1 / localhost are real (default: info entries)
-  #   node_name:                       # the short `node` label (default: country code + number)
-  #     pattern: '([A-Z]{2}).*?(\d+)$'
-  #     template: "$1-$2"
+  #   node_name: full                  # the `node` label: country (default: flag's code + number,
+  #                                    # "HK 01"), full (the name), or {pattern: …, template: "$1 $2"}
   #   groups:                          # this provider's own groups instead of the global ones
   #     - {name: Asia, match: "HK|JP|SG|TW"}
   #     - {name: Rest, match: "."}

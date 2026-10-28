@@ -15,9 +15,18 @@ are dialled directly, no mihomo process or listener ports to manage.
   `dns`, `reject`, overlay networks) and `dialer-proxy` chains: all counted as invalid. Only remote
   proxies are tested (ss, ssr, vmess, vless, trojan, hysteria/2, tuic, wireguard, anytls, snell,
   socks5, http, …). Two nodes with one name are both tested, the later one as `<name> #2`. A node
-  flagged 🇨🇳 whose name says Taiwan (台湾, 臺灣, Taiwan, TW) is flagged 🇹🇼, as many lists get it wrong.
-- **Classification**: include / exclude by name, a short `node` label (default: country code and
-  number, `🇭🇰 HK | 香港 01` → `HK 01`), groups by ordered regexps (global or per provider).
+  flagged 🇨🇳 whose name says Taiwan (台湾, 臺灣, Taiwan, TW) is flagged 🇹🇼, as many lists get it wrong;
+  one flagged 🇺🇲 (the US's outlying islands) 🇺🇸.
+- **Classification**: include / exclude by name, groups by ordered regexps (global or per
+  provider), and the short `node` label (`node_name`):
+  - `country` (the default): the country code of the name's flag and the node's number, whatever
+    the list's style: `🇭🇰 HK | 香港 01`, `🇭🇰 高级 专线 香港 01`, `🇭🇰 香港 | V1 | 01` → `HK 01`. The number
+    is the last one standing on its own (a rate `1x` or `[0.2]`, a version `V1` are not); none: the
+    code alone (`🇦🇪 边缘 专线 迪拜` → `AE`). Where a country's labels would collide (a list naming
+    nodes by city, or numbering each city from 01) that country's nodes are numbered in list order.
+    A name without a flag keeps itself.
+  - `full`: the name as the list has it.
+  - `{pattern, template}`: a regexp and its `regexp.Expand` template (`'([A-Z]{2}).*?(\d+)$'`, `"$1-$2"`).
 - **Latency**, every node each interval: a request through the node, as the round trip once
   connected (mihomo's unified-delay) or with the set-up; for nodes on TCP, a TCP connect to the
   entry server beside it (DNS excluded), which tells "our side cannot reach the entry" from "the
