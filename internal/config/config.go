@@ -41,8 +41,9 @@ type Provider struct {
 	File      string   `yaml:"file"` // or a local file of the same
 	UserAgent string   `yaml:"user_agent"`
 	Refresh   Duration `yaml:"refresh"`
-	Include   Regexp   `yaml:"include"` // names to keep (empty: all)
-	Exclude   Regexp   `yaml:"exclude"` // names to drop (info entries such as "expires …")
+	Include   Regexp   `yaml:"include"`    // names to keep (empty: all)
+	Exclude   Regexp   `yaml:"exclude"`    // names to drop (info entries such as "expires …")
+	KeepLocal bool     `yaml:"keep_local"` // nodes on this host are real (default: info entries)
 	NodeName  NodeName `yaml:"node_name"`
 	Groups    []Group  `yaml:"groups"` // this provider's own groups instead of the global ones
 }

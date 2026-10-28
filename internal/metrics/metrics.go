@@ -46,8 +46,8 @@ var (
 
 	dProvNodes     = desc("provider_nodes", "Nodes tested from the provider's list.", provLabels...)
 	dProvExcluded  = desc("provider_excluded_nodes", "Entries of the list left out by include / exclude.", provLabels...)
-	dProvDuplicate = desc("provider_duplicate_nodes", "Entries whose name came earlier in the list (left out).", provLabels...)
-	dProvInvalid   = desc("provider_invalid_nodes", "Entries left out: not a remote proxy, dialer-proxy, or mihomo could not build them.", provLabels...)
+	dProvDuplicate = desc("provider_duplicate_nodes", "Entries whose name came earlier in the list (tested as <name> #2, …).", provLabels...)
+	dProvInvalid   = desc("provider_invalid_nodes", "Entries left out: an info entry (no real server), not a remote proxy, dialer-proxy, or mihomo could not build them.", provLabels...)
 	dProvFetched   = desc("provider_fetch_timestamp_seconds", "When the list was last fetched successfully.", provLabels...)
 	dProvErrors    = desc("provider_fetch_errors_total", "Failed fetches (the last good list stays).", provLabels...)
 	dProvUsed      = desc("provider_traffic_used_bytes", "Traffic used, from the provider's subscription-userinfo.", provLabels...)

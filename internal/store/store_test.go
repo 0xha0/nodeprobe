@@ -56,8 +56,8 @@ func TestSetNodesKeepsAndDrops(t *testing.T) {
 	if len(sn.Nodes) != 2 || sn.Nodes[0].Result.Ok != 1 || sn.Nodes[1].Result.Tested {
 		t.Errorf("a must keep its results, c start fresh: %+v", sn.Nodes)
 	}
-	if len(sn.Speed) != 0 || len(sn.SpeedTests) != 0 {
-		t.Errorf("the speed check and counters of a group that is gone must go: %+v %+v", sn.Speed, sn.SpeedTests)
+	if len(sn.Speed) != 0 || len(sn.SpeedTests) != 3 || sn.SpeedTests[0].Group != "JP" {
+		t.Errorf("the speed check and counters of a group that is gone must go, the new group's start: %+v %+v", sn.Speed, sn.SpeedTests)
 	}
 	if sn.Providers["p"].Info.Total != 5 || sn.SpeedBytes["p"] != 10 {
 		t.Errorf("%+v %+v", sn.Providers, sn.SpeedBytes)
@@ -122,23 +122,47 @@ func TestRecordSpeedOfAGoneNode(t *testing.T) {
 	s.SetNodes("p", b, Raw{At: time.Now()})
 	s.SetNodes("p", nodes("p", "HK", "b"), Raw{At: time.Now()}) // a goes while its check runs
 	s.RecordSpeed(&SpeedResult{Node: b.Nodes[0], Result: Pass, At: time.Now()})
-	if sn := s.Snapshot(); len(sn.Speed)+len(sn.SpeedTests) != 0 {
+	if sn := s.Snapshot(); len(sn.Speed) != 0 || sn.SpeedBytes["p"] != 0 {
 		t.Errorf("a check of a node that is gone came back: %+v", sn.Speed)
 	}
 }
 
-func TestClearSpeedAndRaw(t *testing.T) {
+func TestSpeedOffAndRaw(t *testing.T) {
 	s := New(time.Hour)
 	b := nodes("p", "HK", "a")
 	s.SetNodes("p", b, Raw{Source: "u", At: time.Now()})
 	s.RecordSpeed(&SpeedResult{Node: b.Nodes[0], Result: Pass, Bytes: 5, At: time.Now()})
 	s.RecordRound("speed", time.Second, time.Now())
-	s.ClearSpeed()
+	s.SetSpeed(false)
+	s.SetNodes("p", nodes("p", "HK", "a"), Raw{Source: "u", At: time.Now()})              // a fetch after the reload
+	s.RecordSpeed(&SpeedResult{Node: b.Nodes[0], Result: Pass, Bytes: 5, At: time.Now()}) // a check still running
 	sn := s.Snapshot()
 	if len(sn.Speed)+len(sn.SpeedTests)+len(sn.SpeedBytes) != 0 || sn.Rounds["speed"] != (Round{}) {
 		t.Errorf("speed state left: %+v", sn)
 	}
 	if r, ok := s.Raw("p"); !ok || r.Source != "u" {
 		t.Errorf("raw %+v %v", r, ok)
+	}
+	s.SetSpeed(true)
+	if sn := s.Snapshot(); len(sn.SpeedTests) != 3 || len(sn.SpeedBytes) != 1 {
+		t.Errorf("speed turned on: the counters must start: %+v %+v", sn.SpeedTests, sn.SpeedBytes)
+	}
+}
+
+func TestSpeedCountersStartAtZero(t *testing.T) {
+	s := New(time.Hour)
+	b := &node.Built{Nodes: append(nodes("p", "HK", "a").Nodes, nodes("p", "JP", "b").Nodes...)}
+	s.SetNodes("p", b, Raw{At: time.Now()})
+	sn := s.Snapshot()
+	if len(sn.SpeedTests) != 6 || len(sn.Speed) != 0 {
+		t.Errorf("each group's three counters before any check: %+v", sn.SpeedTests)
+	}
+	for _, c := range sn.SpeedTests {
+		if c.Count != 0 {
+			t.Errorf("%+v", c)
+		}
+	}
+	if v, ok := sn.SpeedBytes["p"]; !ok || v != 0 {
+		t.Errorf("the provider's bytes must start at 0: %v %v", v, ok)
 	}
 }

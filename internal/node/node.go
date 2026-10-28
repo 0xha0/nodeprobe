@@ -4,6 +4,8 @@ package node
 
 import (
 	"fmt"
+	"maps"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -33,6 +35,14 @@ var tcpProtocols = map[string]bool{
 	"trojan": true, "gost-relay": true, "ssh": true, "mieru": true, "anytls": true, "sudoku": true,
 }
 
+// localServers mark an info entry: a list's "node" that only carries a line of text (traffic left,
+// expiry, the provider's site) and goes nowhere, unless the provider says its nodes can be local.
+// An entry without a server is one always.
+var localServers = map[string]bool{"127.0.0.1": true, "0.0.0.0": true, "::1": true, "::": true, "localhost": true}
+
+// taiwan is a name that says Taiwan; many lists flag those nodes 🇨🇳.
+var taiwan = regexp.MustCompile(`(?i)台湾|臺灣|taiwan|\bTW\b`)
+
 // Node is one tested node.
 type Node struct {
 	Provider string // the provider's name
@@ -52,8 +62,8 @@ func (n *Node) Key() string { return n.Provider + "\x00" + n.Name }
 type Built struct {
 	Nodes      []*Node
 	Excluded   int     // by include / exclude
-	Duplicates int     // a name seen before in the same list
-	Invalid    []error // not a remote proxy, or mihomo could not build it
+	Duplicates int     // a name seen before in the same list (tested as "<name> 2", …)
+	Invalid    []error // an info entry, not a remote proxy, or mihomo could not build it
 }
 
 // Build makes provider p's nodes from its proxies, with the groups that apply to it.
@@ -67,16 +77,33 @@ func Build(p *config.Provider, groups []config.Group, proxies []map[string]any) 
 			b.Invalid = append(b.Invalid, fmt.Errorf("proxies[%d]: no name", i))
 			continue
 		}
+		if rest, ok := strings.CutPrefix(name, "🇨🇳"); ok && taiwan.MatchString(rest) {
+			name = "🇹🇼" + rest
+		}
 		if (p.Include.Regexp != nil && !p.Include.MatchString(name)) ||
 			(p.Exclude.Regexp != nil && p.Exclude.MatchString(name)) {
 			b.Excluded++
 			continue
 		}
-		if seen[name] {
-			b.Duplicates++
+		server, _ := m["server"].(string)
+		if host := strings.ToLower(clean(server)); host == "" || (localServers[host] && !p.KeepLocal) {
+			b.Invalid = append(b.Invalid, fmt.Errorf("%q: no real server (an info entry)", name))
 			continue
 		}
+		short, suffix := label(p, name), ""
+		if seen[name] {
+			// a provider's list can name two nodes alike: both are tested, the later one numbered
+			// (its short name too: the default pattern would take the number for the node's own)
+			b.Duplicates++
+			base := name
+			for k := 2; seen[name]; k++ {
+				suffix = " #" + strconv.Itoa(k)
+				name = base + suffix
+			}
+		}
 		seen[name] = true
+		m = maps.Clone(m)
+		m["name"] = name
 		typ, _ := m["type"].(string)
 		if !protocols[typ] {
 			b.Invalid = append(b.Invalid, fmt.Errorf("%q: type %q is not a remote proxy", name, clean(typ)))
@@ -92,13 +119,12 @@ func Build(p *config.Provider, groups []config.Group, proxies []map[string]any) 
 			b.Invalid = append(b.Invalid, fmt.Errorf("%q: %w", name, err))
 			continue
 		}
-		server, _ := m["server"].(string)
 		_, hopping := m["ports"]
 		mieruUDP := typ == "mieru" && strings.EqualFold(fmt.Sprint(m["transport"]), "udp")
 		b.Nodes = append(b.Nodes, &Node{
 			Provider: p.Name,
 			Name:     name,
-			Label:    label(p, name),
+			Label:    short + suffix,
 			Group:    group(groups, name),
 			Server:   clean(server),
 			Port:     port(m["port"]),

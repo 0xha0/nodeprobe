@@ -6,13 +6,14 @@ listen: ":9101"          # /metrics, /api/status, /healthz
 
 providers:
   - name: main                         # a label: letters, digits, space . _ -
-    url: ${SUB_MAIN}                   # Clash YAML, or share links (plain or base64)
+    url: ${SUB_MAIN}                   # the provider's link: a Clash config (its proxies), or share links
     refresh: 12h
     user_agent: clash.meta             # what providers look for to answer with a Clash YAML
-    exclude: "剩余|到期|官网|Expire"    # info entries some lists carry
+    exclude: "剩余|到期|官网|Expire"    # names to leave out (info entries on a real server)
   # - name: backup
   #   file: /etc/nodeprobe/backup.yaml # a local list instead of a URL
   #   include: "HK|JP"                 # only these
+  #   keep_local: true                 # nodes on 127.0.0.1 / localhost are real (default: info entries)
   #   node_name:                       # the short `node` label (default: country code + number)
   #     pattern: '([A-Z]{2}).*?(\d+)$'
   #     template: "$1-$2"
@@ -22,7 +23,7 @@ providers:
 
 groups:                                # first match wins; no match: "Ungrouped"
   - {name: HK, match: "🇭🇰"}
-  - {name: TW, match: "🇨🇳|🇹🇼"}               # many lists flag Taiwan's nodes 🇨🇳
+  - {name: TW, match: "🇹🇼"}                  # a 🇨🇳 node whose name says Taiwan is flagged 🇹🇼
   - {name: JP, match: "🇯🇵"}
   - {name: SG, match: "🇸🇬"}
   - {name: US, match: "🇺🇸"}

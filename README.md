@@ -5,12 +5,17 @@ Tests the nodes of one or more proxy providers through the
 `/metrics` for Prometheus. One static binary, one small container: the core is built in, nodes
 are dialled directly, no mihomo process or listener ports to manage.
 
-- **Providers**: Clash YAML subscriptions or share-link lists (plain or base64), from a URL or a
-  file, each refreshed on its own interval; the last good list stays when a fetch fails.
-  `subscription-userinfo` (traffic used, total, expiry) is exported when a provider sends it. Only
-  remote proxy types are tested (ss, ssr, vmess, vless, trojan, hysteria/2, tuic, wireguard, anytls,
-  snell, socks5, http, …); `direct`, `dns`, `reject`, overlay networks and `dialer-proxy` chains are
-  left out and counted as invalid.
+- **Providers**: a provider's own subscription link as it is, from a URL or a file: a full Clash /
+  mihomo config (only its `proxies` are read; rules and groups are not needed) or a share-link list
+  (plain or base64). Each is refreshed on its own interval; the last good list stays when a fetch
+  fails. `subscription-userinfo` (traffic used, total, expiry) is exported when a provider sends it.
+- **The nodes of a list**: info entries (a "node" carrying traffic left or an expiry date, its
+  server empty, `127.0.0.1`, `0.0.0.0`, `::1` or `localhost`; `keep_local: true` when a provider's
+  nodes really are on this host) are left out, as are types that are not remote proxies (`direct`,
+  `dns`, `reject`, overlay networks) and `dialer-proxy` chains: all counted as invalid. Only remote
+  proxies are tested (ss, ssr, vmess, vless, trojan, hysteria/2, tuic, wireguard, anytls, snell,
+  socks5, http, …). Two nodes with one name are both tested, the later one as `<name> #2`. A node
+  flagged 🇨🇳 whose name says Taiwan (台湾, 臺灣, Taiwan, TW) is flagged 🇹🇼, as many lists get it wrong.
 - **Classification**: include / exclude by name, a short `node` label (default: country code and
   number, `🇭🇰 HK | 香港 01` → `HK 01`), groups by ordered regexps (global or per provider).
 - **Latency**, every node each interval: a request through the node, as the round trip once
@@ -63,9 +68,9 @@ Node series carry `vantage, provider, group, node, entry`.
 | `nodeprobe_node_connect_seconds` | TCP connect to the entry (absent when it failed or wasn't run) |
 | `nodeprobe_speed_result` | per group, `node` = the one tested: 1 pass, 0.5 slow, 0 fail |
 | `nodeprobe_speed_bytes_per_second`, `_ttfb_seconds`, `_timestamp_seconds` | the group's last check (rate after the first read) |
-| `nodeprobe_speed_tests_total{result}` | per group: pass, slow, fail |
-| `nodeprobe_speed_bytes_total` | per provider: what the checks downloaded |
-| `nodeprobe_provider_nodes`, `_excluded_nodes`, `_duplicate_nodes`, `_invalid_nodes` | the last list |
+| `nodeprobe_speed_tests_total{result}` | per group: pass, slow, fail; all three from the start |
+| `nodeprobe_speed_bytes_total` | per provider: what the checks downloaded; from the start |
+| `nodeprobe_provider_nodes`, `_excluded_nodes`, `_duplicate_nodes`, `_invalid_nodes` | the last list (duplicates: tested, numbered) |
 | `nodeprobe_provider_fetch_timestamp_seconds`, `_fetch_errors_total` | fetches |
 | `nodeprobe_provider_traffic_used_bytes`, `_traffic_total_bytes`, `_expiry_timestamp_seconds` | from `subscription-userinfo` |
 | `nodeprobe_build_info{version,core}`, `nodeprobe_round_seconds{kind}`, `nodeprobe_round_timestamp_seconds{kind}` | itself |

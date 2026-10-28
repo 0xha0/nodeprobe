@@ -204,6 +204,7 @@ func TestRunner(t *testing.T) {
   - {name: "🇭🇰 HK | 香港 02", type: http, server: 127.0.0.1, port: %d}
   - {name: "🇯🇵 JP | 日本 01", type: http, server: 127.0.0.1, port: %d}
   - {name: "到期 2099-01-01", type: http, server: 127.0.0.1, port: 1}
+  - {name: "剩余流量 1 GB", type: http, server: "", port: 1}
 `, good.port(), slow.port(), dead)
 	sub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("key") != "SECRETKEY" {
@@ -217,7 +218,7 @@ func TestRunner(t *testing.T) {
 	cfg, err := config.Parse([]byte(`
 vantage: test
 providers:
-  - {name: main, url: "${SUB}", exclude: "到期"}
+  - {name: main, url: "${SUB}", exclude: "到期", keep_local: true}   # the fake nodes are on this host
 groups:
   - {name: HK, match: "🇭🇰"}
   - {name: Other, match: "."}
@@ -254,6 +255,7 @@ speed: {url: "${TG}/__down?bytes={bytes}", bytes: 200KB, timeout: 3s, window: 5m
 		`nodeprobe_speed_tests_total{group="HK",provider="main",result="pass",vantage="test"} 1`,
 		`nodeprobe_provider_nodes{provider="main",vantage="test"} 3`,
 		`nodeprobe_provider_excluded_nodes{provider="main",vantage="test"} 1`,
+		`nodeprobe_provider_invalid_nodes{provider="main",vantage="test"} 1`, // the info entry without a server
 		`nodeprobe_provider_traffic_used_bytes{provider="main",vantage="test"} 30`,
 		`nodeprobe_provider_traffic_total_bytes{provider="main",vantage="test"} 1000`,
 		`nodeprobe_provider_expiry_timestamp_seconds{provider="main",vantage="test"} 1.9e+09`,
@@ -313,7 +315,7 @@ func runnerFor(t *testing.T, tg *httptest.Server, extra string, nodes map[string
 		t.Fatal(err)
 	}
 	cfg, err := config.Parse([]byte(fmt.Sprintf(`
-providers: [{name: main, file: %q}]
+providers: [{name: main, file: %q, keep_local: true}]
 groups: [{name: All, match: "."}]
 latency: {url: "%s/204", timeout: 2s, interval: 1m}
 speed: {url: "%s/__down?bytes={bytes}&slow=1", bytes: 100KB, timeout: 3s, window: 5m}

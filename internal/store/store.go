@@ -88,6 +88,7 @@ type Store struct {
 	speed      map[string]*SpeedResult // provider/group → last check
 	speedTests map[[3]string]uint64    // provider, group, result → checks
 	speedBytes map[string]uint64       // provider → bytes the checks downloaded
+	speedOff   bool                    // speed checks turned off: no speed state at all
 	providers  map[string]*ProviderState
 	rounds     map[string]Round
 }
@@ -151,7 +152,27 @@ func (s *Store) SetNodes(p string, built *node.Built, raw Raw) []*node.Node {
 			delete(s.speedTests, k)
 		}
 	}
+	s.seedSpeed(p, groups)
 	return old
+}
+
+// seedSpeed starts provider p's speed counters at 0, before any check: increase() over a window
+// counts a counter's first value only as a change from an earlier sample, so a counter that appeared
+// at 1 would leave the first check out of every rate and of the traffic.
+func (s *Store) seedSpeed(p string, groups map[string]bool) {
+	if s.speedOff {
+		return
+	}
+	for g := range groups {
+		for _, res := range []string{Pass, Slow, Fail} {
+			if _, ok := s.speedTests[[3]string{p, g, res}]; !ok {
+				s.speedTests[[3]string{p, g, res}] = 0
+			}
+		}
+	}
+	if _, ok := s.speedBytes[p]; !ok {
+		s.speedBytes[p] = 0
+	}
 }
 
 // Raw is provider p's last good list.
@@ -196,10 +217,22 @@ func (s *Store) DropProvider(p string) []*node.Node {
 	return old
 }
 
-// ClearSpeed forgets every speed check (speed checks were turned off).
-func (s *Store) ClearSpeed() {
+// SetSpeed turns speed checks on (the default: every provider's counters start at 0) or off (every
+// speed check and counter is forgotten, and none start).
+func (s *Store) SetSpeed(on bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.speedOff = !on
+	if on {
+		for p, ns := range s.nodes {
+			groups := map[string]bool{}
+			for _, n := range ns {
+				groups[n.Group] = true
+			}
+			s.seedSpeed(p, groups)
+		}
+		return
+	}
 	s.speed = map[string]*SpeedResult{}
 	s.speedTests = map[[3]string]uint64{}
 	s.speedBytes = map[string]uint64{}
@@ -333,20 +366,16 @@ func better(avgA time.Duration, okA time.Time, labelA string, avgB time.Duration
 	return labelA < labelB
 }
 
-// RecordSpeed stores a group's speed check, unless its node went while it was tested.
+// RecordSpeed stores a group's speed check, unless its node went while it was tested (or speed checks
+// were turned off meanwhile).
 func (s *Store) RecordSpeed(r *SpeedResult) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	n := r.Node
-	if s.results[n.Key()] == nil {
+	if s.results[n.Key()] == nil || s.speedOff {
 		return
 	}
 	s.speed[n.Provider+"/"+n.Group] = r
-	for _, res := range []string{Pass, Slow, Fail} { // all three from the first check: rates need them
-		if _, ok := s.speedTests[[3]string{n.Provider, n.Group, res}]; !ok {
-			s.speedTests[[3]string{n.Provider, n.Group, res}] = 0
-		}
-	}
 	s.speedTests[[3]string{n.Provider, n.Group, r.Result}]++
 	if r.Bytes > 0 {
 		s.speedBytes[n.Provider] += uint64(r.Bytes)

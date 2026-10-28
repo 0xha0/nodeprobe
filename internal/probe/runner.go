@@ -80,9 +80,7 @@ func (r *Runner) Rebuild() {
 			}
 		}
 	}
-	if !*r.cfg.Speed.Enabled {
-		r.store.ClearSpeed()
-	}
+	r.store.SetSpeed(*r.cfg.Speed.Enabled)
 }
 
 func source(p *config.Provider) string {
