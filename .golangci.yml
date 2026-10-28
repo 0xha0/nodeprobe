@@ -1,0 +1,36 @@
+# golangci-lint v2: the default linters plus the ones that catch what a long-running prober gets
+# wrong (unclosed bodies, requests without a context, ignored errors, unsafe patterns)
+version: "2"
+linters:
+  enable:
+    - bodyclose
+    - contextcheck
+    - copyloopvar
+    - errorlint
+    - gocritic
+    - gosec
+    - misspell
+    - noctx
+    - nolintlint
+    - revive
+    - unconvert
+    - unparam
+    - usestdlibvars
+  settings:
+    gosec:
+      excludes:
+        - G304 # the config and a provider's file are paths the operator names
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: var-naming
+        - name: error-strings
+        - name: unused-parameter
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [gosec, noctx, bodyclose, unparam]
+formatters:
+  enable:
+    - gofmt

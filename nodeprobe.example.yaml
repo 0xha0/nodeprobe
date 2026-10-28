@@ -1,0 +1,51 @@
+# nodeprobe's config. ${NAME} comes from the environment (an unset one is an error): keep
+# subscription keys in an env file, not here. Everything but providers and groups has a default.
+
+vantage: home            # a label on every metric: where the tests run from
+listen: ":9101"          # /metrics, /api/status, /healthz
+
+providers:
+  - name: main                         # a label: letters, digits, space . _ -
+    url: ${SUB_MAIN}                   # Clash YAML, or share links (plain or base64)
+    refresh: 12h
+    user_agent: clash.meta             # what providers look for to answer with a Clash YAML
+    exclude: "剩余|到期|官网|Expire"    # info entries some lists carry
+  # - name: backup
+  #   file: /etc/nodeprobe/backup.yaml # a local list instead of a URL
+  #   include: "HK|JP"                 # only these
+  #   node_name:                       # the short `node` label (default: country code + number)
+  #     pattern: '([A-Z]{2}).*?(\d+)$'
+  #     template: "$1-$2"
+  #   groups:                          # this provider's own groups instead of the global ones
+  #     - {name: Asia, match: "HK|JP|SG|TW"}
+  #     - {name: Rest, match: "."}
+
+groups:                                # first match wins; no match: "Ungrouped"
+  - {name: HK, match: "🇭🇰"}
+  - {name: TW, match: "🇨🇳|🇹🇼"}               # many lists flag Taiwan's nodes 🇨🇳
+  - {name: JP, match: "🇯🇵"}
+  - {name: SG, match: "🇸🇬"}
+  - {name: US, match: "🇺🇸"}
+  - {name: EU, match: "🇩🇪|🇬🇧|🇫🇷|🇳🇱|🇪🇸|🇨🇭|🇸🇪|🇮🇪"}
+  - {name: Other, match: "."}
+
+latency:                 # every node, every interval
+  interval: 5m
+  url: https://cp.cloudflare.com/generate_204
+  timeout: 5s
+  concurrency: 8         # nodes at a time: all at once slow each other down
+  unified: true          # the round trip once connected (mihomo's unified-delay)
+
+connect:                 # TCP connect to each node's entry server, DNS excluded
+  enabled: true
+  timeout: 3s
+
+speed:                   # a health check of each (provider, group), not a ranking
+  enabled: true
+  interval: 4h
+  first: 5m              # the first round, after the start
+  url: "https://speed.cloudflare.com/__down?bytes={bytes}"
+  bytes: 5MB             # or the timeout, whichever first
+  timeout: 10s
+  window: 30m            # a group's node: the best average latency over this (failures count as the timeout)
+  min_rate: 2Mbps        # below: slow
