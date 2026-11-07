@@ -40,7 +40,7 @@ are dialled directly, no mihomo process or listener ports to manage.
 
 ```sh
 docker run -d --name nodeprobe -p 9101:9101 \
-  -v ./config:/etc/nodeprobe:ro --env-file nodeprobe.env \
+  -v ./config:/etc/nodeprobe:ro -v ./dumps:/var/lib/nodeprobe --env-file nodeprobe.env \
   ghcr.io/0xha0/nodeprobe:latest
 docker kill -s HUP nodeprobe      # reload the config
 ```
@@ -64,6 +64,24 @@ nodeprobe -config nodeprobe.yaml -healthcheck    # 0 when the local /healthz is 
 Endpoints: `/metrics`, `/api/status` (the last results as JSON), `/healthz` (503 when no latency
 round ended within three intervals).
 
+### Watchdog
+
+`nodeprobe` (serving) is two processes: the first, a container's PID 1, runs the second, the
+worker, and watches it; it passes `SIGHUP` on and stops it on `SIGTERM`. The worker reports each
+latency test, round and speed check through a pipe. When none came for `watchdog.timeout` (default
+3 × `latency.interval`), the watchdog has the worker print every goroutine's stack (`SIGQUIT` with
+`GOTRACEBACK=crash`: each thread prints its own, so a goroutine that keeps the others stopped shows
+up too) into the log and, with `watchdog.dump_dir`, into a file there; then it starts a new worker
+and counts it (`nodeprobe_watchdog_restarts_total`). A worker that doesn't stop within 6 s of a
+`SIGTERM` (`docker stop` waits 10) is dumped the same way, then the container ends.
+
+A process can't watch itself: one goroutine that can't be stopped holds every other at the next
+stop-the-world (a GC), the watchdog's too, and `/metrics`, `/healthz` and the tests all go quiet.
+The watchdog replaces the worker itself rather than leaving it to Docker's restart policy, which
+skips a container's next exit after a `docker kill`, a reload's `SIGHUP` included (Docker 29).
+`dump_dir` must be writable by uid 65532: a volume, as the log goes with the container.
+`watchdog: {enabled: false}` runs one process, as before.
+
 ## Metrics
 
 Node series carry `vantage, provider, group, node, entry`.
@@ -83,6 +101,7 @@ Node series carry `vantage, provider, group, node, entry`.
 | `nodeprobe_provider_fetch_timestamp_seconds`, `_fetch_errors_total` | fetches |
 | `nodeprobe_provider_traffic_used_bytes`, `_traffic_total_bytes`, `_expiry_timestamp_seconds` | from `subscription-userinfo` |
 | `nodeprobe_build_info{version,core}`, `nodeprobe_round_seconds{kind}`, `nodeprobe_round_timestamp_seconds{kind}` | itself |
+| `nodeprobe_watchdog_restarts_total` | workers the watchdog found stuck and replaced, since it started (absent without it) |
 
 Success rate of a node over a day:
 

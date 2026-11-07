@@ -27,6 +27,15 @@ type Runner struct {
 	busy      sync.Mutex      // rounds never overlap (a download would slow the delays beside it); held for a whole round
 	closing   sync.WaitGroup  // outbounds waiting for the round that uses them to end
 	now       func() time.Time
+	// Progress, when set, is called whenever the tests move on: a latency test or round done, a
+	// speed check done, a wait for the first list. Not a fetch: fetches go on beside a stuck round.
+	Progress func()
+}
+
+func (r *Runner) progress() {
+	if r.Progress != nil {
+		r.Progress()
+	}
 }
 
 // NewRunner is a runner for cfg writing into st; ua is sent with every request through a node.
@@ -173,6 +182,7 @@ func (r *Runner) closeAfterRound(ns []*node.Node) {
 func (r *Runner) latencyLoop(ctx context.Context) {
 	for ctx.Err() == nil {
 		if len(r.store.Nodes()) == 0 { // no list yet
+			r.progress()
 			if !sleep(ctx, 2*time.Second) {
 				return
 			}
@@ -269,12 +279,14 @@ func (r *Runner) LatencyRound(ctx context.Context) {
 			if ctx.Err() == nil { // a round cut short by a reload or shutdown records nothing
 				r.store.RecordLatency(n, r.now(), delay, conn, connOK)
 			}
+			r.progress()
 		})
 	}
 	wg.Wait()
 	if ctx.Err() == nil {
 		r.store.RecordRound("latency", r.now().Sub(start), r.now())
 	}
+	r.progress()
 }
 
 func (r *Runner) speedLoop(ctx context.Context) {
@@ -311,6 +323,7 @@ func (r *Runner) SpeedRound(ctx context.Context) {
 			out.Result = store.Slow
 		}
 		r.store.RecordSpeed(out)
+		r.progress()
 		r.log.Info("speed check", "provider", n.Provider, "group", n.Group, "node", n.Label, "result", out.Result,
 			"mbps", float64(int(res.Rate*8/1e5))/10, "err", err)
 	}

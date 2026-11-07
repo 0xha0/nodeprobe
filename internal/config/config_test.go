@@ -37,8 +37,26 @@ func TestDefaults(t *testing.T) {
 	if p.URL != "https://example.com/s?key=abc" || p.Refresh.Duration != 12*time.Hour || p.UserAgent != "clash.meta" {
 		t.Errorf("provider %+v", p)
 	}
+	if !*c.Watchdog.Enabled || c.Watchdog.Timeout.Duration != 15*time.Minute || c.Watchdog.DumpDir != "" {
+		t.Errorf("watchdog %+v", c.Watchdog)
+	}
 	if got := c.Groups[1].Match.String(); got != ".*$" {
 		t.Errorf("a $ in a regexp must stay: %q", got)
+	}
+}
+
+func TestWatchdogTimeout(t *testing.T) {
+	sub := env(map[string]string{"SUB": "http://h/"})
+	for y, ok := range map[string]bool{
+		minimal + "watchdog: {timeout: 5m10s}\n":                                       false, // 5m + 5s + 2 × 3s connect
+		minimal + "watchdog: {timeout: 5m12s}\n":                                       true,
+		minimal + "speed: {timeout: 1m}\nwatchdog: {timeout: 5m30s}\n":                 false, // a speed check is the longest test
+		minimal + "speed: {enabled: false, timeout: 1m}\nwatchdog: {timeout: 5m30s}\n": true,
+		minimal + "watchdog: {enabled: false, timeout: 1m}\n":                          true,
+	} {
+		if _, err := Parse([]byte(y), sub); (err == nil) != ok {
+			t.Errorf("%v:\n%s", err, y)
+		}
 	}
 }
 
@@ -129,6 +147,7 @@ func TestInvalid(t *testing.T) {
 		"group Ungrouped":   "providers: [{name: a, url: 'http://h/'}]\ngroups: [{name: Ungrouped, match: x}]\n",
 		"url port":          minimal + "latency: {url: 'http://h:99999/'}\n",
 		"refresh too short": "providers: [{name: a, url: 'http://h/', refresh: 10s}]\ngroups: [{name: X, match: x}]\n",
+		"watchdog too soon": minimal + "watchdog: {timeout: 5m}\n",
 	}
 	for name, y := range cases {
 		t.Run(name, func(t *testing.T) {

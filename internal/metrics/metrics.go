@@ -54,9 +54,10 @@ var (
 	dProvTotal     = desc("provider_traffic_total_bytes", "Traffic allowed, from the provider's subscription-userinfo.", provLabels...)
 	dProvExpiry    = desc("provider_expiry_timestamp_seconds", "When the subscription expires, from its subscription-userinfo.", provLabels...)
 
-	dBuild   = desc("build_info", "nodeprobe's version and the mihomo (Clash Meta) core's.", "vantage", "version", "core")
-	dRound   = desc("round_seconds", "How long the last round took.", "vantage", "kind")
-	dRoundAt = desc("round_timestamp_seconds", "When the last round ended.", "vantage", "kind")
+	dBuild    = desc("build_info", "nodeprobe's version and the mihomo (Clash Meta) core's.", "vantage", "version", "core")
+	dWatchdog = desc("watchdog_restarts_total", "Workers the watchdog found stuck and replaced, since it started (absent without the watchdog).", "vantage")
+	dRound    = desc("round_seconds", "How long the last round took.", "vantage", "kind")
+	dRoundAt  = desc("round_timestamp_seconds", "When the last round ended.", "vantage", "kind")
 )
 
 // Collector reads the store at each scrape.
@@ -65,6 +66,9 @@ type Collector struct {
 	Vantage func() string // the current config's (it can change on a reload)
 	Version string
 	Core    string
+	// Watchdog: this process is a watchdog's worker; WatchdogRestarts, the workers it replaced before
+	Watchdog         bool
+	WatchdogRestarts int
 }
 
 // Describe implements prometheus.Collector.
@@ -96,6 +100,9 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 		send(m, err, d)
 	}
 	gauge(dBuild, 1, v, c.Version, c.Core)
+	if c.Watchdog {
+		counter(dWatchdog, float64(c.WatchdogRestarts), v)
+	}
 
 	for _, nv := range sn.Nodes {
 		n, r := nv.Node, nv.Result

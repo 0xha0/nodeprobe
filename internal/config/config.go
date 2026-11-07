@@ -32,6 +32,7 @@ type Config struct {
 	Latency   Latency    `yaml:"latency"`
 	Connect   Connect    `yaml:"connect"`
 	Speed     Speed      `yaml:"speed"`
+	Watchdog  Watchdog   `yaml:"watchdog"`
 }
 
 // Provider is one node list.
@@ -127,6 +128,15 @@ type Speed struct {
 	MinRate  Rate     `yaml:"min_rate"` // below: "slow"
 }
 
+// Watchdog is the second process that restarts the work when it stops making progress (no
+// test, round or speed check for Timeout): it saves every goroutine's stack first, in the log and
+// in DumpDir. Enabled is read at the start; Timeout follows a reload.
+type Watchdog struct {
+	Enabled *bool    `yaml:"enabled"`  // default true
+	Timeout Duration `yaml:"timeout"`  // default: 3 × latency.interval
+	DumpDir string   `yaml:"dump_dir"` // also a file per dump here (empty: the log only)
+}
+
 // defaults fills what the file leaves out (and the zeros).
 func (c *Config) defaults() {
 	if c.Vantage == "" {
@@ -136,9 +146,9 @@ func (c *Config) defaults() {
 		c.Listen = ":9101"
 	}
 	l := &c.Latency
-	setBool(&l.Unified, true)
-	setBool(&c.Connect.Enabled, true)
-	setBool(&c.Speed.Enabled, true)
+	setTrue(&l.Unified)
+	setTrue(&c.Connect.Enabled)
+	setTrue(&c.Speed.Enabled)
 	setDuration(&l.Interval, 5*time.Minute)
 	if l.URL == "" {
 		l.URL = "https://cp.cloudflare.com/generate_204"
@@ -159,6 +169,8 @@ func (c *Config) defaults() {
 	}
 	setDuration(&s.Timeout, 10*time.Second)
 	setDuration(&s.Window, 30*time.Minute)
+	setTrue(&c.Watchdog.Enabled)
+	setDuration(&c.Watchdog.Timeout, 3*l.Interval.Duration)
 	if s.MinRate == 0 {
 		s.MinRate = 2_000_000
 	}
@@ -174,8 +186,9 @@ func (c *Config) defaults() {
 	}
 }
 
-func setBool(b **bool, v bool) {
+func setTrue(b **bool) {
 	if *b == nil {
+		v := true
 		*b = &v
 	}
 }
@@ -270,6 +283,19 @@ func (c *Config) validate() error {
 		if s.First.Duration < 0 {
 			bad("speed.first is negative")
 		}
+	}
+	// the longest quiet stretch of a process that works: the wait between two latency rounds, then
+	// its first test (the delay, a DNS lookup and a connect) or a speed check (a speed round reports
+	// each one)
+	test := l.Timeout.Duration
+	if *c.Connect.Enabled {
+		test += 2 * c.Connect.Timeout.Duration
+	}
+	if *s.Enabled {
+		test = max(test, s.Timeout.Duration)
+	}
+	if w := c.Watchdog; *w.Enabled && w.Timeout.Duration <= l.Interval.Duration+test {
+		bad("watchdog.timeout must be above latency.interval plus the longest test (%s)", test)
 	}
 	return errors.Join(errs...)
 }

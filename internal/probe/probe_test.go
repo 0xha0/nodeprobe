@@ -235,13 +235,21 @@ speed: {url: "${TG}/__down?bytes={bytes}", bytes: 200KB, timeout: 3s, window: 5m
 	log := slog.New(slog.NewTextHandler(writerFunc(func(b []byte) (int, error) { mu.Lock(); defer mu.Unlock(); return logs.Write(b) }), &slog.HandlerOptions{Level: slog.LevelDebug}))
 	st := store.New(cfg.Speed.Window.Duration)
 	r := NewRunner(cfg, st, log, ua)
+	var beats atomic.Int64
+	r.Progress = func() { beats.Add(1) }
 	c := ctx(t, 30*time.Second)
 	if err := r.Fetch(c, &cfg.Providers[0]); err != nil {
 		t.Fatal(err)
 	}
+	if beats.Load() != 0 {
+		t.Errorf("a fetch reported progress (it goes on beside a stuck round)")
+	}
 	r.LatencyRound(c)
 	r.LatencyRound(c)
 	r.SpeedRound(c)
+	if got := beats.Load(); got != 2*(3+1)+2 { // each test and each round's end, each group's speed check
+		t.Errorf("progress reported %d times", got)
+	}
 
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(&metrics.Collector{Store: st, Vantage: func() string { return cfg.Vantage }, Version: "t", Core: "c"})

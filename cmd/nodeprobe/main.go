@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -81,6 +82,9 @@ func main() {
 	}
 	if *once {
 		os.Exit(runOnce(cfg, log, *speed))
+	}
+	if *cfg.Watchdog.Enabled && os.Getenv(workerEnv) == "" {
+		os.Exit(supervise(cfg, log)) // this process watches; a second one does the work (watchdog.go)
 	}
 	os.Exit(serve(*path, cfg, log))
 }
@@ -170,8 +174,10 @@ func serve(path string, cfg *config.Config, log *slog.Logger) int {
 	st := store.New(cfg.Speed.Window.Duration)
 	started := time.Now()
 
+	worker := os.Getenv(workerEnv) != ""
+	restarts, _ := strconv.Atoi(os.Getenv(restartsEnv))
 	reg := prometheus.NewRegistry()
-	reg.MustRegister(&metrics.Collector{Store: st, Vantage: vantage, Version: version, Core: core()},
+	reg.MustRegister(&metrics.Collector{Store: st, Vantage: vantage, Version: version, Core: core(), Watchdog: worker, WatchdogRestarts: restarts},
 		collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	mux := http.NewServeMux()
 	// one bad series must not cost the others: ContinueOnError serves what could be gathered
@@ -194,10 +200,25 @@ func serve(path string, cfg *config.Config, log *slog.Logger) int {
 	signal.Notify(hup, syscall.SIGHUP)
 	defer signal.Stop(hup)
 
+	var progress func() // the watchdog's, when this is the worker
+	if fd := os.Getenv(workerEnv); fd != "" {
+		hb, err := openHeartbeat(fd)
+		if err != nil {
+			log.Error("watchdog", "err", err)
+			return 2
+		}
+		progress = hb.progress
+		go hb.run(ctx, 5*time.Second, func() time.Duration { return current.Load().Watchdog.Timeout.Duration })
+	}
+
 	for {
 		rctx, cancel := context.WithCancel(ctx)
 		var wg sync.WaitGroup
-		wg.Go(func() { probe.NewRunner(current.Load(), st, log, userAgent()).Run(rctx) })
+		wg.Go(func() {
+			r := probe.NewRunner(current.Load(), st, log, userAgent())
+			r.Progress = progress
+			r.Run(rctx)
+		})
 		next := waitReload(ctx, path, current.Load(), hup, srvErr, log)
 		cancel()
 		wg.Wait()

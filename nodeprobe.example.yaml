@@ -49,3 +49,8 @@ speed:                   # a health check of each (provider, group), not a ranki
   timeout: 10s
   window: 30m            # a group's node: the best average latency over this (failures count as the timeout)
   min_rate: 2Mbps        # below: slow
+
+watchdog:                # a second process replaces the worker when its tests stop moving on
+  enabled: true          # read at the start
+  timeout: 15m           # default: 3 × latency.interval; above latency.interval plus the longest test
+  dump_dir: ""           # also a file per stack dump here, the latest 20 (default: the log only)
