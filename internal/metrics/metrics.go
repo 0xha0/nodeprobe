@@ -13,7 +13,9 @@ import (
 )
 
 var (
-	nodeLabels  = []string{"vantage", "provider", "group", "node", "entry"}
+	// a node's series are named by its short name only: its full name and entry server change with
+	// the list (a provider moving its entries renamed every series), they are in node_info
+	nodeLabels  = []string{"vantage", "provider", "group", "node"}
 	provLabels  = []string{"vantage", "provider"}
 	groupLabels = []string{"vantage", "provider", "group"}
 
@@ -35,6 +37,7 @@ var (
 	dNodeLatency = desc("node_last_latency_seconds", "The node's last latency test (absent when it failed).", nodeLabels...)
 	dLatency     = desc("latency_seconds", "Histogram of the node's latency tests that passed.", nodeLabels...)
 	dChecks      = desc("node_checks_total", "Latency tests by result (ok, fail); both series from the start.", with(nodeLabels, "result")...)
+	dNodeInfo    = desc("node_info", "1 for each node: its entry server (the first hop of its traffic), to join on (vantage, provider, group, node).", with(nodeLabels, "entry")...)
 	dConnect     = desc("node_connect_seconds", "TCP connect to the node's entry server, DNS excluded (absent when it failed or wasn't run: UDP protocols).", nodeLabels...)
 
 	dSpeedResult = desc("speed_result", "A group's last speed check: 1 pass, 0.5 slow, 0 fail; node is the one tested.", nodeLabels...)
@@ -106,7 +109,8 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 
 	for _, nv := range sn.Nodes {
 		n, r := nv.Node, nv.Result
-		l := []string{v, n.Provider, n.Group, n.Label, n.Server}
+		l := []string{v, n.Provider, n.Group, n.Label}
+		gauge(dNodeInfo, 1, with(l, n.Server)...)
 		counter(dChecks, float64(r.Ok), with(l, "ok")...)
 		counter(dChecks, float64(r.Fail), with(l, "fail")...)
 		if !r.Tested {
@@ -134,7 +138,7 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 
 	for _, s := range sn.Speed {
 		n := s.Node
-		l := []string{v, n.Provider, n.Group, n.Label, n.Server}
+		l := []string{v, n.Provider, n.Group, n.Label}
 		gauge(dSpeedResult, speedValue[s.Result], l...)
 		gauge(dSpeedRate, s.Rate, l...)
 		if s.Result != store.Fail {

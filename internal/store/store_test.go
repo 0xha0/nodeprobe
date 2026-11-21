@@ -68,6 +68,21 @@ func TestSetNodesKeepsAndDrops(t *testing.T) {
 	}
 }
 
+// a list that renames a node or moves it to another entry keeps its short name: its results stay
+func TestSetNodesKeepsRenamed(t *testing.T) {
+	s := New(time.Hour)
+	b1 := nodes("p", "HK", "HK 01")
+	b1.Nodes[0].Server = "old.example"
+	s.SetNodes("p", b1, Raw{At: time.Now()})
+	s.RecordLatency(b1.Nodes[0], time.Now(), time.Millisecond, 0, false)
+	b2 := &node.Built{Nodes: []*node.Node{{Provider: "p", Name: "🇭🇰 香港 01 | 1x", Label: "HK 01", Group: "HK", Server: "new.example"}}}
+	s.SetNodes("p", b2, Raw{At: time.Now()})
+	sn := s.Snapshot()
+	if len(sn.Nodes) != 1 || sn.Nodes[0].Result.Ok != 1 || sn.Nodes[0].Node.Server != "new.example" {
+		t.Errorf("the renamed node must keep its results under its new entry: %+v", sn.Nodes)
+	}
+}
+
 func TestPick(t *testing.T) {
 	s := New(30 * time.Minute)
 	hk := nodes("p", "HK", "fast-flaky", "steady", "z-steady")

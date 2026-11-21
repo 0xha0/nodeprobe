@@ -254,12 +254,13 @@ speed: {url: "${TG}/__down?bytes={bytes}", bytes: 200KB, timeout: 3s, window: 5m
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(&metrics.Collector{Store: st, Vantage: func() string { return cfg.Vantage }, Version: "t", Core: "c"})
 	for _, want := range []string{
-		`nodeprobe_node_up{entry="127.0.0.1",group="HK",node="HK 01",provider="main",vantage="test"} 1`,
-		`nodeprobe_node_up{entry="127.0.0.1",group="Other",node="JP 01",provider="main",vantage="test"} 0`,
-		`nodeprobe_node_checks_total{entry="127.0.0.1",group="Other",node="JP 01",provider="main",result="fail",vantage="test"} 2`,
-		`nodeprobe_node_checks_total{entry="127.0.0.1",group="Other",node="JP 01",provider="main",result="ok",vantage="test"} 0`,
-		`nodeprobe_speed_result{entry="127.0.0.1",group="HK",node="HK 01",provider="main",vantage="test"} 1`,
-		`nodeprobe_speed_result{entry="127.0.0.1",group="Other",node="JP 01",provider="main",vantage="test"} 0`,
+		`nodeprobe_node_info{entry="127.0.0.1",group="HK",node="HK 01",provider="main",vantage="test"} 1`,
+		`nodeprobe_node_up{group="HK",node="HK 01",provider="main",vantage="test"} 1`,
+		`nodeprobe_node_up{group="Other",node="JP 01",provider="main",vantage="test"} 0`,
+		`nodeprobe_node_checks_total{group="Other",node="JP 01",provider="main",result="fail",vantage="test"} 2`,
+		`nodeprobe_node_checks_total{group="Other",node="JP 01",provider="main",result="ok",vantage="test"} 0`,
+		`nodeprobe_speed_result{group="HK",node="HK 01",provider="main",vantage="test"} 1`,
+		`nodeprobe_speed_result{group="Other",node="JP 01",provider="main",vantage="test"} 0`,
 		`nodeprobe_speed_tests_total{group="HK",provider="main",result="pass",vantage="test"} 1`,
 		`nodeprobe_provider_nodes{provider="main",vantage="test"} 3`,
 		`nodeprobe_provider_excluded_nodes{provider="main",vantage="test"} 1`,
@@ -268,15 +269,15 @@ speed: {url: "${TG}/__down?bytes={bytes}", bytes: 200KB, timeout: 3s, window: 5m
 		`nodeprobe_provider_traffic_total_bytes{provider="main",vantage="test"} 1000`,
 		`nodeprobe_provider_expiry_timestamp_seconds{provider="main",vantage="test"} 1.9e+09`,
 		`nodeprobe_speed_bytes_total{provider="main",vantage="test"} 200000`,
-		`nodeprobe_node_connect_seconds{entry="127.0.0.1",group="HK",node="HK 01",provider="main",vantage="test"}`,
-		`nodeprobe_latency_seconds_bucket{entry="127.0.0.1",group="HK",node="HK 01",provider="main",vantage="test",le="+Inf"} 2`,
-		`nodeprobe_latency_seconds_count{entry="127.0.0.1",group="HK",node="HK 01",provider="main",vantage="test"} 2`,
+		`nodeprobe_node_connect_seconds{group="HK",node="HK 01",provider="main",vantage="test"}`,
+		`nodeprobe_latency_seconds_bucket{group="HK",node="HK 01",provider="main",vantage="test",le="+Inf"} 2`,
+		`nodeprobe_latency_seconds_count{group="HK",node="HK 01",provider="main",vantage="test"} 2`,
 	} {
 		if !strings.Contains(scrape(t, reg), want) {
 			t.Errorf("missing: %s", want)
 		}
 	}
-	if strings.Contains(scrape(t, reg), `nodeprobe_node_connect_seconds{entry="127.0.0.1",group="Other",node="JP 01"`) {
+	if strings.Contains(scrape(t, reg), `nodeprobe_node_connect_seconds{group="Other",node="JP 01"`) {
 		t.Error("a connect to a closed port reported a time")
 	}
 	// a histogram for every tested node (JP 01's empty); HK 02's set-up costs 150 ms (counted:

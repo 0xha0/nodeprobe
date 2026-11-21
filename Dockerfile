@@ -13,6 +13,9 @@ FROM gcr.io/distroless/static-debian13:nonroot
 COPY --from=build /nodeprobe /nodeprobe
 USER nonroot:nonroot
 EXPOSE 9101
-HEALTHCHECK --interval=1m --timeout=10s --start-period=1m CMD ["/nodeprobe", "-config", "/etc/nodeprobe/nodeprobe.yaml", "-healthcheck"]
+# No path in the command lines: the config is the default, /etc/nodeprobe/nodeprobe.yaml. Synology's
+# Security Advisor (ruleDB Malware/Binary/lock3dCheck.py) SIGSTOPs every process whose command line
+# contains "/etc/node" (a backdoor's path, matched without a boundary): it froze nodeprobe, watchdog
+# and worker together, at each weekly scan (cmd/nodeprobe/dockerfile_test.go checks the lines here).
+HEALTHCHECK --interval=1m --timeout=10s --start-period=1m CMD ["/nodeprobe", "-healthcheck"]
 ENTRYPOINT ["/nodeprobe"]
-CMD ["-config", "/etc/nodeprobe/nodeprobe.yaml"]

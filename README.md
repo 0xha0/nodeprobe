@@ -51,6 +51,12 @@ leaves a single-file mount on the old one. `SIGHUP` reloads it: each provider's 
 from its last list at once (a provider whose URL or file changed is fetched afresh); a config that
 does not load is refused and the running one stays; `listen` changes only with a restart.
 
+On a Synology NAS, keep `/etc/node` out of the container's command line (no `-config
+/etc/nodeprobe/…`: the image runs without arguments, the default path is that one). The Security
+Advisor's malware rule `lock3dCheck.py` freezes (`SIGSTOP`) every process whose command line contains
+`/etc/node`, a backdoor's path matched without a boundary, at each scan: nodeprobe stopped weekly,
+its watchdog with it.
+
 `${NAME}` in a value comes from the environment (an unset one is an error); a value that is exactly
 `${NAME}` takes the type of what it holds (`concurrency: ${C}`); `$${` is a literal `${` (a named
 group in `node_name.template`). In durations, sizes and counts, 0 means the default.
@@ -84,7 +90,10 @@ skips a container's next exit after a `docker kill`, a reload's `SIGHUP` include
 
 ## Metrics
 
-Node series carry `vantage, provider, group, node, entry`.
+Node series carry `vantage, provider, group, node`: the node's short name, not its full name or its
+entry server, which a list changes (a provider moving its entries would start every series anew).
+`nodeprobe_node_info{…, entry} 1` gives each node's entry server, to join on; `/api/status` has the
+full names too.
 
 | metric | |
 |---|---|
@@ -92,6 +101,7 @@ Node series carry `vantage, provider, group, node, entry`.
 | `nodeprobe_node_last_latency_seconds` | the last latency (absent when it failed) |
 | `nodeprobe_latency_seconds` | histogram of the tests that passed |
 | `nodeprobe_node_checks_total{result="ok"\|"fail"}` | latency tests; both series from the start |
+| `nodeprobe_node_info{entry}` | 1 per node: its entry server |
 | `nodeprobe_node_connect_seconds` | TCP connect to the entry (absent when it failed or wasn't run) |
 | `nodeprobe_speed_result` | per group, `node` = the one tested: 1 pass, 0.5 slow, 0 fail |
 | `nodeprobe_speed_bytes_per_second`, `_ttfb_seconds`, `_timestamp_seconds` | the group's last check (rate after the first read) |

@@ -40,8 +40,12 @@ import (
 
 var version = "dev"
 
+// defaultConfig is where the image mounts the config: a container runs without arguments (see the
+// Dockerfile: no path on a command line).
+const defaultConfig = "/etc/nodeprobe/nodeprobe.yaml"
+
 func main() {
-	path := flag.String("config", "/etc/nodeprobe/nodeprobe.yaml", "the config file")
+	path := flag.String("config", defaultConfig, "the config file")
 	check := flag.Bool("check", false, "check the config and exit")
 	once := flag.Bool("once", false, "one round, print the status, exit")
 	speed := flag.Bool("speed", false, "with -once: a speed round too")

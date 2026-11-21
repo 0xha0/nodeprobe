@@ -56,8 +56,10 @@ type Node struct {
 	Proxy    C.Proxy
 }
 
-// Key identifies a node across fetches: its provider and full name.
-func (n *Node) Key() string { return n.Provider + "\x00" + n.Name }
+// Key identifies a node across fetches: its provider and its short name (unique within the
+// provider), not its full name: a list that renames a node ("🇭🇰 香港 01" → "🇭🇰 香港 01 | 1x") or
+// moves it to another entry server keeps its results, as its series keep their labels.
+func (n *Node) Key() string { return n.Provider + "\x00" + n.Label }
 
 // Built is one provider's nodes plus what was left out and why.
 type Built struct {
